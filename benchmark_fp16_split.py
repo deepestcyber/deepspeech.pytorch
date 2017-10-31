@@ -16,7 +16,7 @@ hidden_size = args.hidden_size
 input_standard = torch.randn(750, args.batch_size, hidden_size).cuda()  # seq_length based on max deepspeech length
 
 
-class SeqLSTM(torch.nn.Module):
+class SeqLSTM(torch.nn.Sequential):
     def __init__(self, num_layers):
         super(SeqLSTM, self).__init__()
         self.rnns = [torch.nn.LSTM(hidden_size, hidden_size) for x in range(num_layers)]
