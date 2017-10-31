@@ -19,7 +19,7 @@ input_standard = torch.randn(750, args.batch_size, hidden_size).cuda()  # seq_le
 class SeqLSTM(torch.nn.Module):
     def __init__(self, num_layers):
         super(SeqLSTM, self).__init__()
-        self.rnns = [torch.nn.LSTM(hidden_size, hidden_size) for x in num_layers]
+        self.rnns = [torch.nn.LSTM(hidden_size, hidden_size) for x in range(num_layers)]
 
     def forward(self, x):
         for rnn in self.rnns:
