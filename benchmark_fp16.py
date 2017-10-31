@@ -22,6 +22,8 @@ input_standard = torch.randn(args.batch_size, 1, 161, args.seconds * 100).cuda()
 
 model = DeepSpeech(rnn_hidden_size=args.hidden_size, nb_layers=args.hidden_layers, num_classes=29)
 parameters = model.parameters()
+optimizer = torch.optim.SGD(model.parameters(), lr=3e-4,
+                            momentum=0.9, nesterov=True)
 model = torch.nn.DataParallel(model).cuda()
 criterion = CTCLoss()
 
