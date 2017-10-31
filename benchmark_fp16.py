@@ -70,10 +70,7 @@ def run_benchmark(input_data, cuda_half=False):
         iteration(input_data, cuda_half)
         update_progress(n / (float(args.dry_runs) - 1))
     print('\nDry runs finished, running benchmark')
-    running_time = 0
-    total_fwd_time = 0
-    total_bwd_time = 0
-    total_loss_time = 0
+    running_time, total_fwd_time, total_bwd_time, total_loss_time = 0, 0, 0, 0
     for n in range(args.runs):
         start, end, fwd_time, bwd_time, loss_time = iteration(input_data, cuda_half)
         running_time += end - start
