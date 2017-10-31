@@ -22,8 +22,6 @@ input_standard = torch.randn(args.batch_size, 1, 161, args.seconds * 100).cuda()
 
 model = DeepSpeech(rnn_hidden_size=args.hidden_size, nb_layers=args.hidden_layers, num_classes=29)
 parameters = model.parameters()
-optimizer = torch.optim.SGD(parameters, lr=3e-4,
-                            momentum=0.9, nesterov=True)
 model = torch.nn.DataParallel(model).cuda()
 criterion = CTCLoss()
 
@@ -46,12 +44,14 @@ def iteration(input_data, cuda_half=False):
 
     seq_length = out.size(0)
     sizes = Variable(input_percentages.mul_(int(seq_length)).int())
+    loss_time = time.time()
     if cuda_half:
         out = out.cuda().float()
     loss = criterion(out, targets, sizes, target_sizes)
     loss = loss / inputs.size(0)  # average the loss by minibatch
     if cuda_half:
         loss = loss.cuda().half()
+    loss_time = time.time() - loss_time
     bwd_time = time.time()
     # compute gradient
     optimizer.zero_grad()
@@ -60,7 +60,7 @@ def iteration(input_data, cuda_half=False):
     torch.cuda.synchronize()
     bwd_time = time.time() - bwd_time
     end = time.time()
-    return start, end, fwd_time, bwd_time
+    return start, end, fwd_time, bwd_time, loss_time
 
 
 def run_benchmark(input_data, cuda_half=False):
@@ -71,28 +71,32 @@ def run_benchmark(input_data, cuda_half=False):
     running_time = 0
     total_fwd_time = 0
     total_bwd_time = 0
+    total_loss_time = 0
     for n in range(args.runs):
-        start, end, fwd_time, bwd_time = iteration(input_data, cuda_half)
+        start, end, fwd_time, bwd_time, loss_time = iteration(input_data, cuda_half)
         running_time += end - start
         total_fwd_time += fwd_time
         total_bwd_time += bwd_time
+        total_loss_time += loss_time
         update_progress(n / (float(args.runs) - 1))
     bwd_time = total_bwd_time / float(args.runs)
     fwd_time = total_fwd_time / float(args.runs)
-    return running_time / float(args.runs), fwd_time, bwd_time
+    loss_time = total_loss_time / float(args.runs)
+    return running_time / float(args.runs), fwd_time, bwd_time, loss_time
 
 
 print("Running standard benchmark")
-run_time, fwd_time, bwd_time = run_benchmark(input_standard)
+run_time, fwd_time, bwd_time, loss_time = run_benchmark(input_standard)
 input_half = input_standard.cuda().half()
 model = model.cuda().half()
 optimizer = torch.optim.SGD(model.parameters(), lr=3e-4,
                             momentum=0.9, nesterov=True)
 print("\nRunning half precision benchmark")
-run_time_half, fwd_time_half, bwd_time_half = run_benchmark(input_half, cuda_half=True)
+run_time_half, fwd_time_half, bwd_time_half, loss_time_half = run_benchmark(input_half, cuda_half=True)
 
 print('\n')
 print("Average times for DeepSpeech training in seconds: ")
-print("F32 precision: Average training loop %.2fs Forward: %.2fs Backward: %.2fs" % (run_time, fwd_time, bwd_time))
-print("F16 precision: Average training loop %.2fs Forward: %.2fs Backward: %.2fs" % (
-    run_time_half, fwd_time_half, bwd_time_half))
+print("F32 precision: Average training loop %.2fs Forward: %.2fs Backward: %.2fs Loss time: %.2fs " % (
+    run_time, fwd_time, bwd_time, loss_time))
+print("F16 precision: Average training loop %.2fs Forward: %.2fs Backward: %.2fs Loss time: %.2fs  " % (
+    run_time_half, fwd_time_half, bwd_time_half, loss_time_half))
