@@ -15,6 +15,13 @@ supported_rnns = {
 supported_rnns_inv = dict((v, k) for k, v in supported_rnns.items())
 
 
+class RNNSequential(nn.Sequential):
+    def forward(self, x, hi=None):
+        ho = [None] * len(self._modules)
+        for i, module in enumerate(self._modules.values()):
+            x, ho[i] = module(x, None if hi is None else hi[i])
+        return x, ho
+
 class SequenceWise(nn.Module):
     def __init__(self, module):
         """
@@ -62,13 +69,13 @@ class BatchRNN(nn.Module):
     def flatten_parameters(self):
         self.rnn.flatten_parameters()
 
-    def forward(self, x):
+    def forward(self, x, h=None):
         if self.batch_norm is not None:
             x = self.batch_norm(x)
-        x, _ = self.rnn(x)
+        x, h = self.rnn(x, h)
         if self.bidirectional:
             x = x.view(x.size(0), x.size(1), 2, -1).sum(2).view(x.size(0), x.size(1), -1)  # (TxNxH*2) -> (TxNxH) by sum
-        return x
+        return x, h
 
 
 class Lookahead(nn.Module):
@@ -153,7 +160,7 @@ class DeepSpeech(nn.Module):
             rnn = BatchRNN(input_size=rnn_hidden_size, hidden_size=rnn_hidden_size, rnn_type=rnn_type,
                            bidirectional=bidirectional)
             rnns.append(('%d' % (x + 1), rnn))
-        self.rnns = nn.Sequential(OrderedDict(rnns))
+        self.rnns = RNNSequential(OrderedDict(rnns))
         self.lookahead = nn.Sequential(
             # consider adding batch norm?
             Lookahead(rnn_hidden_size, context=context),
@@ -169,14 +176,14 @@ class DeepSpeech(nn.Module):
         )
         self.inference_softmax = InferenceBatchSoftmax()
 
-    def forward(self, x):
+    def forward(self, x, hs=None):
         x = self.conv(x)
 
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])  # Collapse feature dimension
         x = x.transpose(1, 2).transpose(0, 1).contiguous()  # TxNxH
 
-        x = self.rnns(x)
+        x, h = self.rnns(x, hs)
 
         if not self._bidirectional:  # no need for lookahead layer in bidirectional
             x = self.lookahead(x)
@@ -185,7 +192,7 @@ class DeepSpeech(nn.Module):
         x = x.transpose(0, 1)
         # identity in training mode, softmax in eval mode
         x = self.inference_softmax(x)
-        return x
+        return x, h
 
     @classmethod
     def load_model(cls, path, cuda=False):
