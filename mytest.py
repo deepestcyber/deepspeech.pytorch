@@ -131,6 +131,7 @@ if __name__ == '__main__':
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
         out, h = model(spect_in, h)
+        out = out.transpose(0, 1)  # TxNxH
 
         decoded_output, _, = decoder.decode(out.data)
 
