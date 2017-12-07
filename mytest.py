@@ -4,7 +4,7 @@ import numpy as np
 from torch.autograd import Variable
 from tqdm import tqdm
 
-from decoder import GreedyDecoder
+from decoder import GreedyDecoder, GreedyDecoderMaxOffset
 
 from data.data_loader import SpectrogramDataset, AudioDataLoader
 from model import DeepSpeech
@@ -37,6 +37,24 @@ beam_args.add_argument('--cutoff_prob', default=1.0, type=float,
 beam_args.add_argument('--lm_workers', default=1, type=int, help='Number of LM processes to use')
 args = parser.parse_args()
 
+def filter_usable_words(s):
+    # remove leading whitespace since this would mess up our metric
+    # to take the second *word* in the prediction.
+    s = s.strip()
+    s = s.split(' ')
+    if len(s) < 3:
+        return ''
+    return s[1:-1]
+
+def pp_joint(out, p):
+    s = out[0][0]
+    p = p.tolist()
+
+    o1 = "".join(["{:>4} ".format(n) for n in s])
+    o2 = "".join(["{:.2f} ".format(n) for n in p])
+
+    return "\n".join([o1, o2])
+
 if __name__ == '__main__':
     model = DeepSpeech.load_model(args.model_path, cuda=args.cuda)
     model.eval()
@@ -44,7 +62,7 @@ if __name__ == '__main__':
     labels = DeepSpeech.get_labels(model)
     audio_conf = DeepSpeech.get_audio_conf(model)
 
-    decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
+    decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
     target_decoder = GreedyDecoder(labels, blank_index=labels.index('_'))
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.test_manifest, labels=labels,
                                       normalize=True)
@@ -69,41 +87,50 @@ if __name__ == '__main__':
     inp.setchannels(1)
     inp.setrate(audio_conf['sample_rate'])
     inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
-    #inp.setperiodsize(5 * window_size_abs)
-    inp.setperiodsize(window_size_abs)
-
-    import matplotlib.pyplot as plt
-
-    h = None
-
-    img = np.zeros((11, window_size_abs))
-    img_i = 0
+    inp.setperiodsize(11 * window_size_abs)
+    #inp.setperiodsize(window_size_abs)
 
     import visdom
     vis = visdom.Visdom()
 
     import torchaudio
-
     sound, _ = torchaudio.load('samples/SA1.WAV')
     sound = sound.numpy()[:,0]
 
-    for i in range(0, len(sound)):
-        y = sound[i*window_size_abs:(i+1)*window_size_abs]
+    n = 11
+    idxs = zip(range(0, len(sound), n), range(0, len(sound), n)[1:])
+    img = np.zeros((11*8, window_size_abs))
+    img_i = 0
+    h = None
+
+    for start, end in idxs:
+        y = sound[start*window_size_abs:end*window_size_abs]
     #while True:
-        #l, data = inp.read()
-        #y = np.fromstring(data, dtype='int16')
+    #    l, data = inp.read()
+    #    y = np.fromstring(data, dtype='int16')
 
         print("y.shape",y.shape)
 
+        """
+        # pre-fill buffer
         if img_i < img.shape[0]:
             img[img_i] = y
             img_i += 1
             continue
+        """
 
-        img[:-1] = img[1:]
-        img[-1] = y
+        n = 11
+        img[:-n] = img[n:]
+        img[-n:] = y.reshape(n, -1)
+        y = img.flatten()
+
+        """
+        img[:-n] = img[n:]
+        foo = y.reshape((n, -1))
+        img[-n:] = foo
 
         y = img.flatten()
+        """
 
         n_fft = int(sample_rate * window_size)
         win_length = n_fft
@@ -124,8 +151,7 @@ if __name__ == '__main__':
             spect.div_(std)
 
         #librosa.display.specshow(spect)
-        vis.image(spect.numpy(), win="foo")
-
+        #vis.image(spect.numpy(), win="foo")
         #print(spect.size())
 
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
@@ -133,11 +159,18 @@ if __name__ == '__main__':
         out, h = model(spect_in, h)
         out = out.transpose(0, 1)  # TxNxH
 
-        decoded_output, _, = decoder.decode(out.data)
+        print("out.size", out.size())
 
-        print("dout", decoded_output)
+        decoded_output, offsets, cprobs = decoder.decode(out.data)
+#        print(filter_usable_words(decoded_output[0][0]))
 
-        #import pdb; pdb.set_trace()
+        #print("dout", decoded_output)
+        #print("probs", cprobs)
+
+        pp = pp_joint(decoded_output, cprobs)
+        print(pp)
+
+
 
 
     assert False
