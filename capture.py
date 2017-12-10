@@ -60,6 +60,7 @@ def capture(audio_conf, use_file, queue):
     import wave
     write_to_file = False
     debug_i = 0
+    step = 0
 
 
     if write_to_file:
@@ -94,12 +95,9 @@ def capture(audio_conf, use_file, queue):
             l, data = inp.read()
             y = np.fromstring(data, dtype='int16')
 
-        print(y.shape, float(y.shape[0])/n)
-
         img[:-n] = img[n:]
         img[-n:] = y.reshape((n, -1))
         y = img[:k].flatten()
-        print("XXX y.shape", y.shape)
 
         # pre-fill buffer
         if img_i < img.shape[0]:
@@ -111,9 +109,11 @@ def capture(audio_conf, use_file, queue):
             debug_i += 1
 
         spect = compute_spect(y)
-        queue.put(spect)
+        print("queueing step", step)
+        queue.put((step, spect))
 
-        #img_i = 0
+        step += 1
+        img_i = 0
 
     # Flush in case of file
     queue.put(compute_spect(img.flatten()))

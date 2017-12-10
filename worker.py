@@ -40,11 +40,13 @@ def transcribe(model, decoder, q):
     vis = visdom.Visdom()
 
     while True:
-        spect = q.get()
+        step, spect = q.get()
 
         tick = time.time()
 
         spect = torch.from_numpy(spect)
+
+        print("modeling step", step)
 
         vis.image(spect.numpy(), win="foo")
 
