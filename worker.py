@@ -79,6 +79,7 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
     parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam"], type=str, help="Decoder to use")
     parser.add_argument('--padding_t', default=10, type=int)
+    parser.add_argument('--use_file', action='store_true')
 
     beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
     beam_args.add_argument('--top_paths', default=1, type=int, help='number of beams to return')
@@ -111,7 +112,7 @@ if __name__ == '__main__':
 
     q = Queue()
 
-    p_capture = Process(target=capture.capture, args=(audio_conf, q,))
+    p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
     p_transcribe = Process(target=transcribe, args=(model, decoder, q,))
 
     p_capture.start()

@@ -10,7 +10,7 @@ def infinite_loop():
         yield (0,0)
 
 
-def capture(audio_conf, queue):
+def capture(audio_conf, use_file, queue):
     sample_rate = audio_conf['sample_rate']
     window_stride = audio_conf['window_stride']
     window_size = audio_conf['window_size']
@@ -36,8 +36,6 @@ def capture(audio_conf, queue):
     sound_padded = np.zeros(int(pad_len), dtype=sound.dtype)
     sound_padded[:len(sound)] = sound
     sound = sound_padded
-
-    use_file = False
 
     if use_file:
         buffer_dtype = sound.dtype
