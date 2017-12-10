@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import argparse
 import time
 
@@ -32,32 +34,32 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-def transcribe(model, q):
-    labels = DeepSpeech.get_labels(model)
-    decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
+def transcribe(model, decoder, q):
     hidden = None
+    import visdom
+    vis = visdom.Visdom()
 
     while True:
         spect = q.get()
 
         tick = time.time()
-        #vis.image(spect.numpy(), win="foo")
 
         spect = torch.from_numpy(spect)
+
+        vis.image(spect.numpy(), win="foo")
+
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
         out, hidden = model(spect_in, hidden)
         out = out.transpose(0, 1)  # TxNxH
 
-        print("out.size", out.size())
-
-        decoded_output, offsets, cprobs = decoder.decode(out.data)
-#        print(filter_usable_words(decoded_output[0][0]))
-        #print("dout", decoded_output)
-        #print("probs", cprobs)
-
-        pp = pp_joint(decoded_output, cprobs)
-        print(pp)
+        if isinstance(decoder, GreedyDecoderMaxOffset):
+            decoded_output, offsets, cprobs = decoder.decode(out.data)
+            pp = pp_joint(decoded_output, cprobs)
+            print(pp)
+        else:
+            decoded_output, offsets = decoder.decode(out.data)
+            print(decoded_output)
 
         tock = time.time()
         print("model time:", tock - tick)
@@ -75,6 +77,8 @@ if __name__ == '__main__':
     parser.add_argument('--test_manifest', metavar='DIR',
                         help='path to validation manifest csv', default='data/test_manifest.csv')
     parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
+    parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam"], type=str, help="Decoder to use")
+    parser.add_argument('--padding_t', default=10, type=int)
 
     beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
     beam_args.add_argument('--top_paths', default=1, type=int, help='number of beams to return')
@@ -89,19 +93,26 @@ if __name__ == '__main__':
     beam_args.add_argument('--cutoff_prob', default=1.0, type=float,
                            help='Cutoff probability in pruning,default 1.0, no pruning.')
     beam_args.add_argument('--lm_workers', default=1, type=int, help='Number of LM processes to use')
-
     args = parser.parse_args()
 
-    model = DeepSpeech.load_model(args.model_path)
+    model = DeepSpeech.load_model(args.model_path, padding_t=args.padding_t)
     model.eval()
 
     audio_conf = DeepSpeech.get_audio_conf(model)
+    labels = DeepSpeech.get_labels(model)
 
+    if args.decoder == "beam":
+        from decoder import BeamCTCDecoder
+        decoder = BeamCTCDecoder(labels, lm_path=args.lm_path, alpha=args.alpha, beta=args.beta,
+                                 cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
+                                 beam_width=args.beam_width, num_processes=args.lm_workers)
+    else:
+        decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
 
     q = Queue()
 
     p_capture = Process(target=capture.capture, args=(audio_conf, q,))
-    p_transcribe = Process(target=transcribe, args=(model, q,))
+    p_transcribe = Process(target=transcribe, args=(model, decoder, q,))
 
     p_capture.start()
     p_transcribe.start()

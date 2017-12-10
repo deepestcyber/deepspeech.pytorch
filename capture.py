@@ -37,7 +37,7 @@ def capture(audio_conf, queue):
     sound_padded[:len(sound)] = sound
     sound = sound_padded
 
-    use_file = True
+    use_file = False
 
     if use_file:
         buffer_dtype = sound.dtype
@@ -45,9 +45,9 @@ def capture(audio_conf, queue):
         buffer_dtype = 'int16'
 
     # window to send to model
-    k = 11
+    k = None
     # feed
-    n = 2
+    n = 11
     if use_file:
         idxs = zip(range(0, len(sound), n), range(0, len(sound), n)[1:])
     else:
@@ -88,6 +88,7 @@ def capture(audio_conf, queue):
             spect /= std + eps
         return spect
 
+
     for start, end in idxs:
         if use_file:
             y = sound[start*window_size_abs:end*window_size_abs]
@@ -100,6 +101,7 @@ def capture(audio_conf, queue):
         img[:-n] = img[n:]
         img[-n:] = y.reshape((n, -1))
         y = img[:k].flatten()
+        print("XXX y.shape", y.shape)
 
         # pre-fill buffer
         if img_i < img.shape[0]:
@@ -111,8 +113,6 @@ def capture(audio_conf, queue):
             debug_i += 1
 
         spect = compute_spect(y)
-
-        #print("sending spect.")
         queue.put(spect)
 
         #img_i = 0
