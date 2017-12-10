@@ -120,7 +120,7 @@ class Lookahead(nn.Module):
 
 class DeepSpeech(nn.Module):
     def __init__(self, rnn_type=nn.LSTM, labels="abc", rnn_hidden_size=768, nb_layers=5, audio_conf=None,
-                 bidirectional=True, context=20):
+                 bidirectional=True, context=20, padding_t=10):
         super(DeepSpeech, self).__init__()
 
         # model metadata needed for serialization/deserialization
@@ -139,7 +139,7 @@ class DeepSpeech(nn.Module):
         num_classes = len(self._labels)
 
         self.conv = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(0, 10)),
+            nn.Conv2d(1, 32, kernel_size=(41, 11), stride=(2, 2), padding=(0, padding_t)),
             nn.BatchNorm2d(32),
             nn.Hardtanh(0, 20, inplace=True),
             nn.Conv2d(32, 32, kernel_size=(21, 11), stride=(2, 1), ),
@@ -195,11 +195,11 @@ class DeepSpeech(nn.Module):
         return x, h
 
     @classmethod
-    def load_model(cls, path, cuda=False):
+    def load_model(cls, path, cuda=False, **kwargs):
         package = torch.load(path, map_location=lambda storage, loc: storage)
         model = cls(rnn_hidden_size=package['hidden_size'], nb_layers=package['hidden_layers'],
                     labels=package['labels'], audio_conf=package['audio_conf'],
-                    rnn_type=supported_rnns[package['rnn_type']], bidirectional=package.get('bidirectional', True))
+                    rnn_type=supported_rnns[package['rnn_type']], bidirectional=package.get('bidirectional', True), **kwargs)
         # the blacklist parameters are params that were previous erroneously saved by the model
         # care should be taken in future versions that if batch_norm on the first rnn is required
         # that it be named something else
