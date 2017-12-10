@@ -87,7 +87,9 @@ if __name__ == '__main__':
     inp.setchannels(1)
     inp.setrate(audio_conf['sample_rate'])
     inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
-    inp.setperiodsize(11 * window_size_abs)
+
+    print(inp.pcmmode())
+
     #inp.setperiodsize(window_size_abs)
 
     import visdom
@@ -99,27 +101,22 @@ if __name__ == '__main__':
 
     n = 11
     idxs = zip(range(0, len(sound), n), range(0, len(sound), n)[1:])
-    img = np.zeros((11*8, window_size_abs))
+    img = np.zeros((11*4, window_size_abs))
     img_i = 0
     h = None
 
-    for start, end in idxs:
-        y = sound[start*window_size_abs:end*window_size_abs]
-    #while True:
-    #    l, data = inp.read()
-    #    y = np.fromstring(data, dtype='int16')
+    inp.setperiodsize(n)
+
+    print(float(np.prod(img.shape)) / sample_rate, "seconds of audio buffered")
+
+    #for start, end in idxs:
+    #    y = sound[start*window_size_abs:end*window_size_abs]
+    while True:
+        l, data = inp.read()
+        y = np.fromstring(data, dtype='int16')
 
         print("y.shape",y.shape)
 
-        """
-        # pre-fill buffer
-        if img_i < img.shape[0]:
-            img[img_i] = y
-            img_i += 1
-            continue
-        """
-
-        n = 11
         img[:-n] = img[n:]
         img[-n:] = y.reshape(n, -1)
         y = img.flatten()
@@ -131,6 +128,11 @@ if __name__ == '__main__':
 
         y = img.flatten()
         """
+
+        # pre-fill buffer
+        if img_i < img.shape[0]:
+            img_i += n
+            continue
 
         n_fft = int(sample_rate * window_size)
         win_length = n_fft
