@@ -17,6 +17,11 @@ def capture(audio_conf, queue):
     inp.setrate(audio_conf['sample_rate'])
     inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
 
+    BUFFER_SECONDS = 1
+
+    buffer_dim = np.ceil(float(BUFFER_SECONDS * sample_rate) / window_size_abs)
+    buffer_dim = int(buffer_dim)
+
     print(inp.pcmmode())
 
     #inp.setperiodsize(window_size_abs)
@@ -27,7 +32,7 @@ def capture(audio_conf, queue):
 
     n = 11
     idxs = zip(range(0, len(sound), n), range(0, len(sound), n)[1:])
-    img = np.zeros((11*8, window_size_abs))
+    img = np.zeros((buffer_dim, window_size_abs), dtype='int16')
     img_i = 0
     h = None
 
@@ -35,14 +40,19 @@ def capture(audio_conf, queue):
 
     print(float(np.prod(img.shape)) / sample_rate, "seconds of audio buffered")
 
+    import wave
+    write_to_file = True
+    debug_i = 0
+
+    if write_to_file:
+        f = wave.open('debug/sample_{}.wav'.format(debug_i), mode='wb')
+        f.setparams((1, 2, sample_rate, 0, 'NONE', 'not compressed'))
+
     #for start, end in idxs:
-    #    print("Cap. prepare")
     #    y = sound[start*window_size_abs:end*window_size_abs]
     while True:
         l, data = inp.read()
         y = np.fromstring(data, dtype='int16')
-
-        print("y.shape",y.shape)
 
         img[:-n] = img[n:]
         img[-n:] = y.reshape(n, -1)
@@ -61,6 +71,10 @@ def capture(audio_conf, queue):
             img_i += n
             continue
 
+        if write_to_file:
+            f.writeframes(y.tostring())
+            debug_i += 1
+
         n_fft = int(sample_rate * window_size)
         win_length = n_fft
         hop_length = int(sample_rate * window_stride)
@@ -78,8 +92,10 @@ def capture(audio_conf, queue):
             spect -= mean
             spect /= std
 
-        print("sending spect.")
+        #print("sending spect.")
         queue.put(spect)
+
+        img_i = 0
     print("Finished capture")
 
 if __name__ == "__main__":

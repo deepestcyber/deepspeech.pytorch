@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import numpy as np
 import torch
@@ -39,6 +40,7 @@ def transcribe(model, q):
     while True:
         spect = q.get()
 
+        tick = time.time()
         #vis.image(spect.numpy(), win="foo")
 
         spect = torch.from_numpy(spect)
@@ -57,6 +59,9 @@ def transcribe(model, q):
         pp = pp_joint(decoded_output, cprobs)
         print(pp)
 
+        tock = time.time()
+        print("model time:", tock - tick)
+
 
 if __name__ == '__main__':
     import argparse
@@ -70,6 +75,21 @@ if __name__ == '__main__':
     parser.add_argument('--test_manifest', metavar='DIR',
                         help='path to validation manifest csv', default='data/test_manifest.csv')
     parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
+
+    beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
+    beam_args.add_argument('--top_paths', default=1, type=int, help='number of beams to return')
+    beam_args.add_argument('--beam_width', default=10, type=int, help='Beam width to use')
+    beam_args.add_argument('--lm_path', default=None, type=str,
+                           help='Path to an (optional) kenlm language model for use with beam search (req\'d with trie)')
+    beam_args.add_argument('--alpha', default=0.8, type=float, help='Language model weight')
+    beam_args.add_argument('--beta', default=1, type=float, help='Language model word bonus (all words)')
+    beam_args.add_argument('--cutoff_top_n', default=40, type=int,
+                           help='Cutoff number in pruning, only top cutoff_top_n characters with highest probs in '
+                                'vocabulary will be used in beam search, default 40.')
+    beam_args.add_argument('--cutoff_prob', default=1.0, type=float,
+                           help='Cutoff probability in pruning,default 1.0, no pruning.')
+    beam_args.add_argument('--lm_workers', default=1, type=int, help='Number of LM processes to use')
+
     args = parser.parse_args()
 
     model = DeepSpeech.load_model(args.model_path)
