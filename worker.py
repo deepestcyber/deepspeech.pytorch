@@ -38,6 +38,7 @@ def transcribe(model, decoder, q, is_debug):
     hidden = None
     accoustic_data = []
     a_data_fac = 4
+    print("start transcribing...")
 
 
     while True:
