@@ -10,3 +10,8 @@ To run the worker with audio input from a file put a WAV file in
 
 (16k, 16 bit LE) and run `worker.py` with the `--use_file` option.
 
+# PaddlePaddle LM
+
+	git clone <paddlepaddle DeepSpeech repo>
+	cd DeepSpeech/decoders/swig
+	sh setup.sh
