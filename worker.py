@@ -39,6 +39,9 @@ def transcribe(model, decoder, q):
     import visdom
     vis = visdom.Visdom()
 
+    accoustic_data = []
+    a_data_fac = 3
+
     while True:
         step, spect = q.get()
 
@@ -55,8 +58,18 @@ def transcribe(model, decoder, q):
         out, hidden = model(spect_in, hidden)
         out = out.transpose(0, 1)  # TxNxH
 
+        print('od',out.data.shape)
+
+        accoustic_data.append(out.data)
+
+        if len(accoustic_data) > a_data_fac:
+            accoustic_data.pop(0)
+
+        if len(accoustic_data) < a_data_fac:
+            continue
+
         if isinstance(decoder, GreedyDecoderMaxOffset):
-            decoded_output, offsets, cprobs = decoder.decode(out.data)
+            decoded_output, offsets, cprobs = decoder.decode(torch.cat(accoustic_data,dim=0))
             pp = pp_joint(decoded_output, cprobs)
             print(pp)
         else:
