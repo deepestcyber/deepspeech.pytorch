@@ -27,7 +27,7 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
     BUFFER_SECONDS = 0.66  #1
     buffer_dim = np.ceil(float(BUFFER_SECONDS * sample_rate) / window_size_abs)
     buffer_dim = int(buffer_dim)
-    buffer_fill_level = buffer_dim / 2
+    buffer_fill_level = buffer_dim / 3 * 2
 
     import torchaudio
     sound, _ = torchaudio.load('samples/SA1.WAV')
