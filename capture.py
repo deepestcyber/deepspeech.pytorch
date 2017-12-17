@@ -14,7 +14,7 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
     sample_rate = audio_conf['sample_rate']
     window_stride = audio_conf['window_stride']
     window_size = audio_conf['window_size']
-    window = audio_conf['window']
+    window = str(audio_conf['window'])
     normalize = True
 
     window_size_abs = int(window_size * sample_rate)
@@ -110,7 +110,7 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
             debug_i += 1
 
         spect = compute_spect(y)
-        import pdb 
+        import pdb
         if do_pdb is True:
             pdb.set_trace()
         print("queueing step", step, "- size k", k, "- size n", n)

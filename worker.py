@@ -34,10 +34,67 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-def transcribe(model, decoder, q):
+beam_alpha = 2.15
+beam_beta = 0.35
+beam_size = 500
+cutoff_prob = 1.0
+cutoff_top_n = 40
+
+
+def external_decoder(vocab_list, scorer, infer_results):
+    from swig_decoders import ctc_beam_search_decoder_batch
+    scorer.reset_params(beam_alpha, beam_beta)
+
+    # TODO: is dis gud?
+    probs_split = infer_results
+    print(probs_split.shape)
+    probs_list = probs_split.numpy().tolist()
+
+    print(probs_list, type(probs_list[0][0][0]))
+
+    # beam search decode
+    num_processes = 1 # min(num_processes, len(probs_split))
+    beam_search_results = ctc_beam_search_decoder_batch(
+        probs_split,
+        vocab_list,
+        beam_size,
+        num_processes,
+        cutoff_prob,
+        cutoff_top_n,
+        scorer,
+    )
+
+    results = [result[0][1] for result in beam_search_results]
+    return results
+
+
+def setup_scorer(language_model_path, vocab_list):
+    from swig_decoders import Scorer
+    print("begin to initialize the external scorer "
+                     "for decoding")
+    _ext_scorer = Scorer(beam_alpha, beam_beta, language_model_path, vocab_list)
+
+    lm_char_based = _ext_scorer.is_character_based()
+    lm_max_order = _ext_scorer.get_max_order()
+    lm_dict_size = _ext_scorer.get_dict_size()
+    print("language model: "
+                     "is_character_based = %d," % lm_char_based +
+                     " max_order = %d," % lm_max_order +
+                     " dict_size = %d" % lm_dict_size)
+    print("end initializing scorer. Start decoding ...")
+
+    return _ext_scorer
+
+
+def transcribe(model, language_model_path, decoder, q):
     hidden = None
     accoustic_data = []
     a_data_fac = 4
+
+    vocab_list = DeepSpeech.get_labels(model)
+    vocab_list = [chars.encode("utf-8") for chars in vocab_list]
+
+    scorer = setup_scorer(language_model_path, vocab_list)
 
     while True:
         step, spect = q.get()
@@ -65,7 +122,9 @@ def transcribe(model, decoder, q):
 
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
-        if isinstance(decoder, GreedyDecoderMaxOffset):
+        if True:
+            external_decoder(vocab_list, scorer, buffered_probs)
+        elif isinstance(decoder, GreedyDecoderMaxOffset):
             decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
             pp = pp_joint(decoded_output, cprobs)
             print(pp)
@@ -89,7 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_manifest', metavar='DIR',
                         help='path to validation manifest csv', default='data/test_manifest.csv')
     parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
-    parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam"], type=str, help="Decoder to use")
+    parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam", "pp"], type=str, help="Decoder to use")
     parser.add_argument('--padding_t', default=10, type=int)
     parser.add_argument('--use_file', action='store_true')
 
@@ -119,13 +178,15 @@ if __name__ == '__main__':
         decoder = BeamCTCDecoder(labels, lm_path=args.lm_path, alpha=args.alpha, beta=args.beta,
                                  cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width, num_processes=args.lm_workers)
+    elif args.decoder == "pp":
+        decoder = None
     else:
         decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
 
     q = Queue()
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
-    p_transcribe = Process(target=transcribe, args=(model, decoder, q,))
+    p_transcribe = Process(target=transcribe, args=(model, args.lm_path, decoder, q,))
 
     try:
         p_capture.start()
