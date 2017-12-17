@@ -117,8 +117,12 @@ if __name__ == '__main__':
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
     p_transcribe = Process(target=transcribe, args=(model, decoder, q,))
 
-    p_capture.start()
-    p_transcribe.start()
+    try:
+        p_capture.start()
+        p_transcribe.start()
 
-    p_capture.join()
-    p_transcribe.join()
+        p_capture.join()
+        p_transcribe.join()
+    except KeyboardInterrupt:
+        p_capture.terminate()
+        p_transcribe.terminate()
