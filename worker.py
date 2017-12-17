@@ -34,10 +34,11 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-def transcribe(model, decoder, q):
+def transcribe(model, decoder, q, is_debug):
     hidden = None
     accoustic_data = []
     a_data_fac = 4
+
 
     while True:
         step, spect = q.get()
@@ -46,14 +47,13 @@ def transcribe(model, decoder, q):
 
         spect = torch.from_numpy(spect)
 
-        print("modeling step", step)
-
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
         out, hidden = model(spect_in, hidden)
         out = out.transpose(0, 1)  # TxNxH
 
-        print('od',out.data.shape)
+        if is_debug is True:
+            print('od',out.data.shape)
 
         accoustic_data.append(out.data)
 
@@ -74,7 +74,7 @@ def transcribe(model, decoder, q):
             print(decoded_output)
 
         tock = time.time()
-        print("model time:", tock - tick)
+        print("modeling step", step, "model time:", tock - tick)
 
 
 if __name__ == '__main__':
@@ -92,6 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam"], type=str, help="Decoder to use")
     parser.add_argument('--padding_t', default=10, type=int)
     parser.add_argument('--use_file', action='store_true')
+    parser.add_argument('--debug', action='store_true')
 
     beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
     beam_args.add_argument('--top_paths', default=1, type=int, help='number of beams to return')
@@ -124,8 +125,8 @@ if __name__ == '__main__':
 
     q = Queue()
 
-    p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
-    p_transcribe = Process(target=transcribe, args=(model, decoder, q,))
+    p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q, args.debug))
+    p_transcribe = Process(target=transcribe, args=(model, decoder, q, args.debug))
 
     try:
         p_capture.start()

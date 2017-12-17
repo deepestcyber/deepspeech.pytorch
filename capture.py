@@ -10,7 +10,7 @@ def infinite_loop():
         yield (0,0)
 
 
-def capture(audio_conf, use_file, queue, do_pdb=False):
+def capture(audio_conf, use_file, queue, is_debug, do_pdb=False):
     sample_rate = audio_conf['sample_rate']
     window_stride = audio_conf['window_stride']
     window_size = audio_conf['window_size']
@@ -110,10 +110,13 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
             debug_i += 1
 
         spect = compute_spect(y)
+
         import pdb 
         if do_pdb is True:
             pdb.set_trace()
-        print("queueing step", step, "- size k", k, "- size n", n)
+        
+        #if is_debug is True:
+        print("queueing step", step, "- size buffer", buffer_dim, "- size n", n)
         queue.put((step, spect))
 
         step += 1
@@ -133,8 +136,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Audio capture')
     parser.add_argument('--model_path', default='models/deepspeech_final.pth.tar',
                         help='Path to model file created by training')
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--use_file', action='store_true')
-    #parser.add_argument('--use_pdb',action='store_true')
+    
     args = parser.parse_args()
 
     model = DeepSpeech.load_model(args.model_path)
@@ -143,5 +147,5 @@ if __name__ == "__main__":
     audio_conf = DeepSpeech.get_audio_conf(model)
 
     q = Queue()
-    capture(audio_conf, args.use_file, q, do_pdb=True)
+    capture(audio_conf, args.use_file, q, ars.debug, do_pdb=True)
 
