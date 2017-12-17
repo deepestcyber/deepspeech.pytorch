@@ -36,11 +36,8 @@ def pp_joint(out, p):
 
 def transcribe(model, decoder, q):
     hidden = None
-    import visdom
-    vis = visdom.Visdom()
-
     accoustic_data = []
-    a_data_fac = 3
+    a_data_fac = 4
 
     while True:
         step, spect = q.get()
@@ -50,8 +47,6 @@ def transcribe(model, decoder, q):
         spect = torch.from_numpy(spect)
 
         print("modeling step", step)
-
-        vis.image(spect.numpy(), win="foo")
 
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
@@ -68,12 +63,14 @@ def transcribe(model, decoder, q):
         if len(accoustic_data) < a_data_fac:
             continue
 
+        buffered_probs = torch.cat(accoustic_data, dim=0)
+
         if isinstance(decoder, GreedyDecoderMaxOffset):
-            decoded_output, offsets, cprobs = decoder.decode(torch.cat(accoustic_data,dim=0))
+            decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
             pp = pp_joint(decoded_output, cprobs)
             print(pp)
         else:
-            decoded_output, offsets = decoder.decode(out.data)
+            decoded_output, offsets = decoder.decode(buffered_probs)
             print(decoded_output)
 
         tock = time.time()
