@@ -120,9 +120,9 @@ if __name__ == '__main__':
     try:
         p_capture.start()
         p_transcribe.start()
+
+        p_capture.join()
+        p_transcribe.join()
     except KeyboardInterrupt:
         p_capture.terminate()
         p_transcribe.terminate()
-
-    p_capture.join()
-    p_transcribe.join()
