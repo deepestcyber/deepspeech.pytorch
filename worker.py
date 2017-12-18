@@ -39,30 +39,31 @@ beam_beta = 0.35
 beam_size = 500
 cutoff_prob = 1.0
 cutoff_top_n = 40
+num_processes = 1 # min(num_processes, len(probs_split))
 
 
 def external_decoder(vocab_list, scorer, infer_results):
-    from swig_decoders import ctc_beam_search_decoder_batch
+    from swig_decoders import ctc_beam_search_decoder_batch, DoubleVector3
     scorer.reset_params(beam_alpha, beam_beta)
 
-    # TODO: is dis gud?
-    probs_split = infer_results
-    print(probs_split.shape)
-    probs_list = probs_split.numpy().tolist()
+    probs_split = infer_results.transpose(0, 1)
+    assert len(vocab_list) + 1 == probs_split.size(-1)
 
-    print(probs_list, type(probs_list[0][0][0]))
+    probs_list = probs_split.numpy().tolist()
+    assert type(probs_list[0][0][0]) == float
 
     # beam search decode
-    num_processes = 1 # min(num_processes, len(probs_split))
     beam_search_results = ctc_beam_search_decoder_batch(
-        probs_split,
+        probs_list,
         vocab_list,
         beam_size,
         num_processes,
-        cutoff_prob,
-        cutoff_top_n,
-        scorer,
+#        cutoff_prob,
+#        cutoff_top_n,
+#        scorer,
     )
+
+    print("foo", beam_search_results)
 
     results = [result[0][1] for result in beam_search_results]
     return results
@@ -86,15 +87,8 @@ def setup_scorer(language_model_path, vocab_list):
     return _ext_scorer
 
 
-def transcribe(model, language_model_path, decoder, q):
+def transcribe(model, q, lm_q):
     hidden = None
-    accoustic_data = []
-    a_data_fac = 4
-
-    vocab_list = DeepSpeech.get_labels(model)
-    vocab_list = [chars.encode("utf-8") for chars in vocab_list]
-
-    scorer = setup_scorer(language_model_path, vocab_list)
 
     while True:
         step, spect = q.get()
@@ -110,7 +104,26 @@ def transcribe(model, language_model_path, decoder, q):
         out, hidden = model(spect_in, hidden)
         out = out.transpose(0, 1)  # TxNxH
 
-        print('od',out.data.shape)
+        print('od', out.data.shape)
+
+        lm_q.put((step, out))
+
+        tock = time.time()
+        print("model time:", tock - tick)
+
+
+def language_model(model, decoder, language_model_path, q):
+    accoustic_data = []
+    a_data_fac = 2
+
+    if decoder == "pp":
+        vocab_list = DeepSpeech.get_labels(model)
+        vocab_list = vocab_list[1:] # ignore blank
+        vocab_list = [chars.encode("utf-8") for chars in vocab_list]
+        scorer = setup_scorer(language_model_path, vocab_list)
+
+    while True:
+        (step, out) = q.get()
 
         accoustic_data.append(out.data)
 
@@ -122,8 +135,9 @@ def transcribe(model, language_model_path, decoder, q):
 
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
-        if True:
-            external_decoder(vocab_list, scorer, buffered_probs)
+        if decoder == "pp":
+            results = external_decoder(vocab_list, scorer, buffered_probs)
+            print(results)
         elif isinstance(decoder, GreedyDecoderMaxOffset):
             decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
             pp = pp_joint(decoded_output, cprobs)
@@ -131,9 +145,6 @@ def transcribe(model, language_model_path, decoder, q):
         else:
             decoded_output, offsets = decoder.decode(buffered_probs)
             print(decoded_output)
-
-        tock = time.time()
-        print("model time:", tock - tick)
 
 
 if __name__ == '__main__':
@@ -179,21 +190,26 @@ if __name__ == '__main__':
                                  cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width, num_processes=args.lm_workers)
     elif args.decoder == "pp":
-        decoder = None
+        decoder = "pp"
     else:
         decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
 
     q = Queue()
+    lm_q = Queue()
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
-    p_transcribe = Process(target=transcribe, args=(model, args.lm_path, decoder, q,))
+    p_transcribe = Process(target=transcribe, args=(model, q, lm_q,))
+    p_model = Process(target=language_model, args=(model, decoder, args.lm_path, lm_q,))
 
     try:
         p_capture.start()
         p_transcribe.start()
+        p_model.start()
 
         p_capture.join()
         p_transcribe.join()
+        p_model.join()
     except KeyboardInterrupt:
         p_capture.terminate()
         p_transcribe.terminate()
+        p_model.terminate()
