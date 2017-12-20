@@ -79,10 +79,7 @@ def language_model(model, decoder, language_model_path, q):
 
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
-        if decoder == "pp":
-            results = decoder.decode(buffered_probs)
-            print(results)
-        elif isinstance(decoder, GreedyDecoderMaxOffset):
+        if isinstance(decoder, GreedyDecoderMaxOffset):
             decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
             pp = pp_joint(decoded_output, cprobs)
             print(pp)
@@ -186,7 +183,7 @@ class PPBeamScorer:
         print("foo", beam_search_results)
 
         results = [result[0][1] for result in beam_search_results]
-        return results
+        return results, None # no offsets
 
 
 if __name__ == '__main__':
