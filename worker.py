@@ -87,8 +87,6 @@ def language_model(model, decoder, language_model_path, q):
             decoded_output, offsets = decoder.decode(buffered_probs)
             print(decoded_output)
 
-        assert False
-
 
 
 
@@ -118,7 +116,7 @@ class PPBeamScorer:
     def get_vocab_list(self, path):
         with open(path, 'r') as f:
             vocab_list = f.readlines()
-        vocab_list = [chars.strip().encode("utf-8") for chars in vocab_list]
+        vocab_list = [chars.rstrip("\n").encode("utf-8") for chars in vocab_list]
         print(vocab_list[:100])
         return vocab_list
 
@@ -141,7 +139,6 @@ class PPBeamScorer:
 
         return _ext_scorer
 
-    # TODO: vocab_list must be alphabet, infer_results must be sorted?
     def decode(self, infer_results):
         from swig_decoders import ctc_beam_search_decoder_batch
 
@@ -240,7 +237,11 @@ if __name__ == '__main__':
         #
         labels = labels[-1] + labels[1:-1]
         print('"%s"' % labels, len(labels))
-        labels = [chars.encode("utf-8") for chars in labels]
+        # NOTE: we convert the labels to lower-case letters for PP as
+        # their language model is trained on lower-case letters but ours
+        # uses upper-case letters. To find any word from the LM, we need
+        # to use lower-case letters.
+        labels = [chars.encode("utf-8").lower() for chars in labels]
 
         decoder = PPBeamScorer(
                 labels,
