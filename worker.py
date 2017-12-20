@@ -34,63 +34,6 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-beam_alpha = 2.15
-beam_beta = 0.35
-beam_size = 500
-cutoff_prob = 1.0
-cutoff_top_n = 40
-num_processes = 1 # min(num_processes, len(probs_split))
-
-
-def external_decoder(vocab_list, scorer, infer_results):
-    from swig_decoders import ctc_beam_search_decoder_batch, DoubleVector3
-    scorer.reset_params(beam_alpha, beam_beta)
-
-    probs_split = infer_results.transpose(0, 1)
-    assert len(vocab_list) + 1 == probs_split.size(-1)
-
-    probs_list = probs_split.numpy().tolist()
-    assert type(probs_list[0][0][0]) == float
-
-    # beam search decode
-    beam_search_results = ctc_beam_search_decoder_batch(
-        probs_list,
-        vocab_list,
-        beam_size,
-        num_processes,
-        cutoff_prob,
-        cutoff_top_n,
-#        scorer,
-    )
-
-    print("foo", beam_search_results)
-
-    results = [result[0][1] for result in beam_search_results]
-    return results
-
-
-def setup_scorer(language_model_path, vocab_list):
-    from swig_decoders import Scorer
-    print("begin to initialize the external scorer "
-                     "for decoding")
-    with open('words.txt') as f:
-        vocab_list = f.readlines()
-    vocab_list = [chars.strip().encode("utf-8") for chars in vocab_list]
-    print(vocab_list[:100])
-    _ext_scorer = Scorer(beam_alpha, beam_beta, language_model_path, vocab_list)
-
-    lm_char_based = _ext_scorer.is_character_based()
-    lm_max_order = _ext_scorer.get_max_order()
-    lm_dict_size = _ext_scorer.get_dict_size()
-    print("language model: "
-                     "is_character_based = %d," % lm_char_based +
-                     " max_order = %d," % lm_max_order +
-                     " dict_size = %d" % lm_dict_size)
-    print("end initializing scorer. Start decoding ...")
-
-    return _ext_scorer
-
-
 def transcribe(model, q, lm_q):
     hidden = None
 
@@ -116,24 +59,10 @@ def transcribe(model, q, lm_q):
         print("model time:", tock - tick)
 
 
+
 def language_model(model, decoder, language_model_path, q):
     accoustic_data = []
     a_data_fac = 3
-
-    if decoder == "pp":
-        vocab_list = DeepSpeech.get_labels(model)
-
-        # the following removes the blank char from the vocabulary and
-        # puts the last index (assumed by PP to be blank index) to the beginning
-        # (beginning is assumed by everyone else to be blank (idx=0)).
-        # The vocab then looks like this:
-        #
-        #    vocab_list = " 'ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        #
-        vocab_list = vocab_list[-1] + vocab_list[1:-1]
-        print('"%s"' % vocab_list, len(vocab_list))
-        vocab_list = [chars.encode("utf-8") for chars in vocab_list]
-        scorer = setup_scorer(language_model_path, vocab_list)
 
     while True:
         (step, out) = q.get()
@@ -151,14 +80,7 @@ def language_model(model, decoder, language_model_path, q):
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
         if decoder == "pp":
-            # PP beam decoder expects blank to be at last index, everyone
-            # else has the blank at idx=0, we swap them here.
-            blanks = buffered_probs[:, :, 0]
-            lasts = buffered_probs[:, :, -1]
-            buffered_probs[:, :, -1] = blanks
-            buffered_probs[:, :, 0] = lasts
-
-            results = external_decoder(vocab_list, scorer, buffered_probs)
+            results = decoder.decode(buffered_probs)
             print(results)
         elif isinstance(decoder, GreedyDecoderMaxOffset):
             decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
@@ -169,6 +91,102 @@ def language_model(model, decoder, language_model_path, q):
             print(decoded_output)
 
         assert False
+
+
+
+
+class PPBeamScorer:
+    def __init__(self, alphabet, language_model_path=None, scorer_vocab_path=None):
+        self.beam_alpha = 2.15
+        self.beam_beta = 0.35
+        self.beam_size = 500
+        self.cutoff_prob = 1.0
+        self.cutoff_top_n = 40
+        self.num_processes = 1 # min(num_processes, len(probs_split))
+        self.language_model_path = language_model_path
+        self.scorer_vocab_path = scorer_vocab_path
+        self.alphabet = alphabet
+
+        if self.language_model_path:
+            assert self.scorer_vocab_path is not None, "Supply a vocabulary (words) path"
+            self.vocab_list = self.get_vocab_list(scorer_vocab_path)
+            self.scorer = self.setup_scorer(
+                    self.language_model_path,
+                    self.get_vocab_list(scorer_vocab_path)
+                )
+        else:
+            self.vocab_list = None
+            self.scorer = None
+
+    def get_vocab_list(self, path):
+        with open(path, 'r') as f:
+            vocab_list = f.readlines()
+        vocab_list = [chars.strip().encode("utf-8") for chars in vocab_list]
+        print(vocab_list[:100])
+        return vocab_list
+
+    def setup_scorer(self, language_model_path, vocab_list):
+        from swig_decoders import Scorer
+        print("begin to initialize the external scorer for decoding")
+        print("alpha = {}, beta = {}, lm_path = {}, len(vocab_list) = {}".format(
+            self.beam_alpha, self.beam_beta, language_model_path, len(vocab_list)))
+
+        _ext_scorer = Scorer(self.beam_alpha, self.beam_beta, language_model_path, vocab_list)
+
+        lm_char_based = _ext_scorer.is_character_based()
+        lm_max_order = _ext_scorer.get_max_order()
+        lm_dict_size = _ext_scorer.get_dict_size()
+        print("language model: "
+                         "is_character_based = %d," % lm_char_based +
+                         " max_order = %d," % lm_max_order +
+                         " dict_size = %d" % lm_dict_size)
+        print("end initializing scorer. Start decoding ...")
+
+        return _ext_scorer
+
+    # TODO: vocab_list must be alphabet, infer_results must be sorted?
+    def decode(self, infer_results):
+        from swig_decoders import ctc_beam_search_decoder_batch
+
+        # PP beam decoder expects blank to be at last index, everyone
+        # else has the blank at idx=0, we swap them here.
+        blanks = infer_results[:, :, 0]
+        lasts = infer_results[:, :, -1]
+        infer_results[:, :, -1] = blanks
+        infer_results[:, :, 0] = lasts
+
+        probs_split = infer_results.transpose(0, 1)
+        assert len(self.alphabet) + 1 == probs_split.size(-1)
+
+        probs_list = probs_split.numpy().tolist()
+        assert type(probs_list[0][0][0]) == float
+
+        # beam search decode
+        if self.scorer is None:
+            beam_search_results = ctc_beam_search_decoder_batch(
+                probs_list,
+                self.alphabet,
+                self.beam_size,
+                self.num_processes,
+                self.cutoff_prob,
+                self.cutoff_top_n,
+        #        scorer,
+            )
+        else:
+            self.scorer.reset_params(self.beam_alpha, self.beam_beta)
+            beam_search_results = ctc_beam_search_decoder_batch(
+                probs_list,
+                self.alphabet,
+                self.beam_size,
+                self.num_processes,
+                self.cutoff_prob,
+                self.cutoff_top_n,
+                self.scorer,
+            )
+        print("foo", beam_search_results)
+
+        results = [result[0][1] for result in beam_search_results]
+        return results
 
 
 if __name__ == '__main__':
@@ -192,6 +210,8 @@ if __name__ == '__main__':
     beam_args.add_argument('--beam_width', default=10, type=int, help='Beam width to use')
     beam_args.add_argument('--lm_path', default=None, type=str,
                            help='Path to an (optional) kenlm language model for use with beam search (req\'d with trie)')
+    beam_args.add_argument('--scorer_vocab_path', default='words.txt', type=str,
+                           help='Path to vocab file')
     beam_args.add_argument('--alpha', default=0.8, type=float, help='Language model weight')
     beam_args.add_argument('--beta', default=1, type=float, help='Language model word bonus (all words)')
     beam_args.add_argument('--cutoff_top_n', default=40, type=int,
@@ -214,7 +234,21 @@ if __name__ == '__main__':
                                  cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width, num_processes=args.lm_workers)
     elif args.decoder == "pp":
-        decoder = "pp"
+        # the following removes the blank char from the vocabulary and
+        # puts the last index (assumed by PP to be blank index) to the beginning
+        # (beginning is assumed by everyone else to be blank (idx=0)).
+        # The vocab then looks like this:
+        #
+        #    alphabet = " 'ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        #
+        labels = labels[-1] + labels[1:-1]
+        print('"%s"' % labels, len(labels))
+        labels = [chars.encode("utf-8") for chars in labels]
+
+        decoder = PPBeamScorer(
+                labels,
+                language_model_path=args.lm_path,
+                scorer_vocab_path=args.scorer_vocab_path)
     else:
         decoder = GreedyDecoderMaxOffset(labels, blank_index=labels.index('_'))
 
