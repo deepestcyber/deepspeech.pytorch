@@ -24,6 +24,7 @@ def filter_usable_words(s):
         return ''
     return s[1:-1]
 
+
 def pp_joint(out, p):
     s = out[0][0]
     p = p.tolist()
@@ -32,6 +33,12 @@ def pp_joint(out, p):
     o2 = "".join(["{:.2f} ".format(n) for n in p])
 
     return "\n".join([o1, o2])
+
+
+def print_raw_greedy(probs):
+    # expects probs to be in BxTxU
+    foo = probs.transpose(0, 1).max(dim=-1)[-1]
+    print([str(decoder.int_to_char[int(foo[:, i][0])]) for i in range(foo.size(-1))])
 
 
 def _zero_backward_state(h):
@@ -59,7 +66,7 @@ def transcribe(model, do_zero_backward_state, q, lm_q):
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
 
         if hidden is not None:
-            # discard history
+            # discard backprop history
             hidden = _repackage_hidden(hidden)
 
             if do_zero_backward_state:
@@ -98,6 +105,8 @@ def language_model(model, decoder, q):
 
         if isinstance(decoder, GreedyDecoderMaxOffset):
             decoded_output, offsets, cprobs = decoder.decode(buffered_probs, k=2)
+
+            print_raw_greedy(buffered_probs)
 
             for i in range(len(decoded_output)):
                 pp = pp_joint(decoded_output[i], cprobs[i])
