@@ -60,9 +60,9 @@ def transcribe(model, q, lm_q):
 
 
 
-def language_model(model, decoder, language_model_path, q):
+def language_model(model, decoder, q):
     accoustic_data = []
-    a_data_fac = 3
+    a_data_fac = 2
 
     while True:
         (step, out) = q.get()
@@ -177,9 +177,19 @@ class PPBeamScorer:
                 self.cutoff_top_n,
                 self.scorer,
             )
-        print("foo", beam_search_results)
+
+        results = sorted(beam_search_results[0], key=lambda x: x[0], reverse=True)
+        print("foo", results[:100])
+
+        return results[0], None
+
 
         results = [result[0][1] for result in beam_search_results]
+
+        with open('foo.pk', 'wb') as f:
+            import pickle
+            pickle.dump(beam_search_results, f)
+
         return results, None # no offsets
 
 
@@ -224,6 +234,9 @@ if __name__ == '__main__':
 
     if args.decoder == "beam":
         from decoder import BeamCTCDecoder
+
+        labels = labels.lower() # TODO test
+
         decoder = BeamCTCDecoder(labels, lm_path=args.lm_path, alpha=args.alpha, beta=args.beta,
                                  cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width, num_processes=args.lm_workers)
@@ -255,7 +268,7 @@ if __name__ == '__main__':
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
     p_transcribe = Process(target=transcribe, args=(model, q, lm_q,))
-    p_model = Process(target=language_model, args=(model, decoder, args.lm_path, lm_q,))
+    p_model = Process(target=language_model, args=(model, decoder, lm_q,))
 
     try:
         p_capture.start()
