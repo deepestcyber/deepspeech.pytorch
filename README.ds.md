@@ -22,15 +22,14 @@ can get the language model here:
 	cd DeepSpeech/models/lm/
 	sh download_lm_en.sh
 
-The word list can be obtained from
-
-	https://github.com/dwyl/english-words/blob/master/words.txt
-
 To start the worker with the PP language model:
 
 	python worker.py \
 		--decoder pp \
+		--scorer_vocab_path alphabet.txt \
 		--lm_path pp/DeepSpeech/models/lm/common_crawl_00.prune01111.trie.klm
 
-At the moment the vocabulary is expected to be in the same folder as `worker.py`
-and named `words.txt`.
+where alphabet.txt contains the alphabet the acoustic model was trained
+on. Note that the case of the letters needs to match the ones the
+LM was trained with, in case of PP lower-case ones, to actually yield
+results.
