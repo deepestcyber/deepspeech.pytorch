@@ -33,3 +33,14 @@ where alphabet.txt contains the alphabet the acoustic model was trained
 on. Note that the case of the letters needs to match the ones the
 LM was trained with, in case of PP lower-case ones, to actually yield
 results.
+
+# Mozilla DeepSpeech LM
+
+Somehow obtain the language model of the Mozilla DeepSpeech project
+(is in the repos, possibly via git LFS).
+
+You can then use it with the "beam" decoder:
+
+	python worker.py \
+		--decoder beam \
+		--lm_path mozilla/DeepSpeech/data/lm/lm.binary
