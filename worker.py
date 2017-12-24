@@ -34,7 +34,16 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-def transcribe(model, q, lm_q):
+def _zero_backward_state(h):
+    for h_layer in h:
+        h_layer.data[1].zero_()
+
+
+def _repackage_hidden(h):
+    return [Variable(h_layer.data) for h_layer in h]
+
+
+def transcribe(model, do_zero_backward_state, q, lm_q):
     hidden = None
 
     while True:
@@ -48,6 +57,14 @@ def transcribe(model, q, lm_q):
 
         spect_in = spect.contiguous().view(1, 1, spect.size(0), spect.size(1))
         spect_in = torch.autograd.Variable(spect_in, volatile=True)
+
+        if hidden is not None:
+            # discard history
+            hidden = _repackage_hidden(hidden)
+
+            if do_zero_backward_state:
+                hidden = _zero_backward_state(hidden)
+
         out, hidden = model(spect_in, hidden)
         out = out.transpose(0, 1)  # TxNxH
 
@@ -214,6 +231,7 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', action="store_true", help="print out decoded output and error of each sample")
     parser.add_argument('--decoder', default="greedy", choices=["greedy", "beam", "pp"], type=str, help="Decoder to use")
     parser.add_argument('--padding_t', default=10, type=int)
+    parser.add_argument('--zero_backward_state', action='store_true')
     parser.add_argument('--use_file', action='store_true')
 
     beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
@@ -274,7 +292,7 @@ if __name__ == '__main__':
     lm_q = Queue()
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
-    p_transcribe = Process(target=transcribe, args=(model, q, lm_q,))
+    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q,))
     p_model = Process(target=language_model, args=(model, decoder, lm_q,))
 
     try:
