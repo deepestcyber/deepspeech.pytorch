@@ -110,9 +110,10 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
             debug_i += 1
 
         spect = compute_spect(y)
-        import pdb
+
         if do_pdb is True:
-            pdb.set_trace()
+            import pdb; pdb.set_trace()
+
         print("queueing step", step, "- size k", k, "- size n", n)
         queue.put((step, spect))
 
