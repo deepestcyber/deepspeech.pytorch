@@ -240,7 +240,7 @@ class GreedyDecoderMaxOffset(Decoder):
                     cprobs.append(probs[i])
         return string, torch.IntTensor(offsets), torch.Tensor(cprobs)
 
-    def decode(self, probs, sizes=None):
+    def decode(self, probs, sizes=None, k=1):
         """
         Returns the argmax decoding given the probability matrix. Removes
         repeated elements in the sequence, as well as blanks.
@@ -252,11 +252,17 @@ class GreedyDecoderMaxOffset(Decoder):
             strings: sequences of the model's best guess for the transcription on inputs
             offsets: time step per character predicted
         """
-        max_probs, max_probs_idx = torch.max(probs.transpose(0, 1), 2)
-        strings, offsets, probs = self.convert_to_strings(
-                max_probs.view(max_probs.size(0), max_probs.size(1)),
-                max_probs_idx.view(max_probs_idx.size(0), max_probs_idx.size(1)),
-                sizes,
-                remove_repetitions=True,
-                return_offsets=True)
+        #max_probs, max_probs_idx = torch.max(probs.transpose(0, 1), 2)
+        max_probs_k, max_probs_idx_k = torch.topk(probs.transpose(0, 1), k, dim=2)
+        strings, offsets, probs = [[None] * k for _ in range(3)]
+        for i in range(k):
+            probs_k = max_probs_k[:, :, i]
+            idcs_k = max_probs_idx_k[:, :, i]
+
+            strings[i], offsets[i], probs[i] = self.convert_to_strings(
+                    probs_k,
+                    idcs_k,
+                    sizes,
+                    remove_repetitions=True,
+                    return_offsets=True)
         return strings, offsets, probs

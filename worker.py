@@ -80,13 +80,20 @@ def language_model(model, decoder, q):
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
         if isinstance(decoder, GreedyDecoderMaxOffset):
-            decoded_output, offsets, cprobs = decoder.decode(buffered_probs)
-            pp = pp_joint(decoded_output, cprobs)
-            print(pp)
+            decoded_output, offsets, cprobs = decoder.decode(buffered_probs, k=2)
+
+            for i in range(len(decoded_output)):
+                pp = pp_joint(decoded_output[i], cprobs[i])
+                print(pp)
+
+            final_string = decoded_output[0][0][0]
         else:
             decoded_output, offsets = decoder.decode(buffered_probs)
             print(decoded_output)
 
+            final_string = decoded_output[0][0]
+
+        print(filter_usable_words(final_string))
 
 
 
