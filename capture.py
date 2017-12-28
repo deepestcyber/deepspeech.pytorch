@@ -27,10 +27,10 @@ def capture(audio_conf, use_file, queue, cap_step, do_pdb=False):
     # BUFFER_SECONDS determines how many seconds of audio the buffer holds.
     # buffer_fill_level holds the amount of new samples that needs to be seen 
     #                   before sending the buffer to the model.
-    BUFFER_SECONDS = 1  #1
+    BUFFER_SECONDS = 1.0
     buffer_dim = np.ceil(float(BUFFER_SECONDS * sample_rate) / window_size_abs)
     buffer_dim = int(buffer_dim)
-    buffer_fill_level = buffer_dim / 4
+    buffer_fill_level = buffer_dim * 1/4
 
     import torchaudio
     sound, _ = torchaudio.load('samples/SA1.WAV')
