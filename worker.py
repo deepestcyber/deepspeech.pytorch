@@ -41,19 +41,15 @@ def print_raw_greedy(probs):
     print([str(decoder.int_to_char[int(foo[:, i][0])]) for i in range(foo.size(-1))])
 
 
-def send_words(words):
+def send_words(vmse_host, vmse_port, words):
     #import json
     #to_send = json.dumps(words)
     to_send = words
     print("WOULD SEND", to_send)
     import socket
-
-    UDP_IP = "127.0.0.1"
-    UDP_PORT = 1800
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     for w in words:
-        sock.sendto(w, (UDP_IP, UDP_PORT))
+        sock.sendto(w, (vmse_host, vmse_port))
 
 
 def _zero_backward_state(h):
@@ -65,7 +61,16 @@ def _repackage_hidden(h):
     return [Variable(h_layer.data) for h_layer in h]
 
 
-def transcribe(model, do_zero_backward_state, q, lm_q, cap_step, decoder):
+def transcribe(
+    model, 
+    do_zero_backward_state, 
+    q, 
+    lm_q, 
+    cap_step, 
+    decoder, 
+    vmse_host, 
+    vmse_port,
+):
     hidden = None
 
     while True:
@@ -98,13 +103,13 @@ def transcribe(model, do_zero_backward_state, q, lm_q, cap_step, decoder):
         print('od', out.data.shape)
 
         #lm_q.put((step, out)) # XXX
-        _temp_decode(decoder, out.data)
+        _temp_decode(decoder, out.data, vmse_host, vmse_port)
 
         tock = time.time()
         print("model time:", tock - tick)
 
 
-def _temp_decode(decoder, probs):
+def _temp_decode(decoder, probs, vmse_host, vmse_port):
     if isinstance(decoder, GreedyDecoderMaxOffset):
         decoded_output, offsets, cprobs = decoder.decode(probs, k=1)
 
@@ -126,7 +131,7 @@ def _temp_decode(decoder, probs):
     usable_words = [n.strip() for n in usable_words if len(n)]
     print(final_string, usable_words)
 
-    send_words(usable_words)
+    send_words(vmse_host, vmse_port, usable_words)
 
 
 def language_model(model, decoder, q):
@@ -266,6 +271,8 @@ if __name__ == '__main__':
     parser.add_argument('--padding_t', default=10, type=int)
     parser.add_argument('--zero_backward_state', action='store_true')
     parser.add_argument('--use_file', action='store_true')
+    parser.add_argument('--vmse-host', type=str, default='vmse2000pi.local')
+    parser.add_argument('--vmse-port', type=int, default=1800)
 
     beam_args = parser.add_argument_group("Beam Decode Options", "Configurations options for the CTC Beam Search decoder")
     beam_args.add_argument('--top_paths', default=1, type=int, help='number of beams to return')
@@ -294,7 +301,6 @@ if __name__ == '__main__':
         from decoder import BeamCTCDecoder
 
         labels = labels.lower() # TODO test
-
         decoder = BeamCTCDecoder(labels, lm_path=args.lm_path, alpha=args.alpha, beta=args.beta,
                                  cutoff_top_n=args.cutoff_top_n, cutoff_prob=args.cutoff_prob,
                                  beam_width=args.beam_width, num_processes=args.lm_workers)
@@ -326,7 +332,7 @@ if __name__ == '__main__':
     cap_step = Value('i', 0)
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q, cap_step))
-    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q, cap_step, decoder))
+    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q, cap_step, decoder, args.vmse_host, args.vmse_port))
     #p_model = Process(target=language_model, args=(model, decoder, lm_q,))
 
     try:
