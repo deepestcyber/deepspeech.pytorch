@@ -65,7 +65,7 @@ def _repackage_hidden(h):
     return [Variable(h_layer.data) for h_layer in h]
 
 
-def transcribe(model, do_zero_backward_state, q, lm_q, cap_step):
+def transcribe(model, do_zero_backward_state, q, lm_q, cap_step, decoder):
     hidden = None
 
     while True:
@@ -97,11 +97,36 @@ def transcribe(model, do_zero_backward_state, q, lm_q, cap_step):
 
         print('od', out.data.shape)
 
-        lm_q.put((step, out))
+        #lm_q.put((step, out)) # XXX
+        _temp_decode(decoder, out.data)
 
         tock = time.time()
         print("model time:", tock - tick)
 
+
+def _temp_decode(decoder, probs):
+    if isinstance(decoder, GreedyDecoderMaxOffset):
+        decoded_output, offsets, cprobs = decoder.decode(probs, k=1)
+
+        print_raw_greedy(probs)
+
+        for i in range(len(decoded_output)):
+            pp = pp_joint(decoded_output[i], cprobs[i])
+            print(pp)
+
+        final_string = decoded_output[0][0][0]
+    else:
+        decoded_output, offsets = decoder.decode(probs)
+        print(decoded_output)
+
+        final_string = decoded_output[0][0]
+
+    #usable_words = filter_usable_words(final_string)
+    usable_words = final_string.split(" ")
+    usable_words = [n.strip() for n in usable_words if len(n)]
+    print(final_string, usable_words)
+
+    send_words(usable_words)
 
 
 def language_model(model, decoder, q):
@@ -121,30 +146,14 @@ def language_model(model, decoder, q):
         if len(accoustic_data) < a_data_fac:
             continue
 
-        buffered_probs = torch.cat(accoustic_data, dim=0)
-
-        if isinstance(decoder, GreedyDecoderMaxOffset):
-            decoded_output, offsets, cprobs = decoder.decode(buffered_probs, k=1)
-
-            print_raw_greedy(buffered_probs)
-
-            for i in range(len(decoded_output)):
-                pp = pp_joint(decoded_output[i], cprobs[i])
-                print(pp)
-
-            final_string = decoded_output[0][0][0]
+        n = None
+        if n is not None:
+            clipped = [x[n:-n] for x in accoustic_data]
         else:
-            decoded_output, offsets = decoder.decode(buffered_probs)
-            print(decoded_output)
+            clipped = accoustic_data
 
-            final_string = decoded_output[0][0]
-
-        #usable_words = filter_usable_words(final_string)
-        usable_words = final_string.split(" ")
-        usable_words = [n.strip() for n in usable_words if len(n)]
-        print(final_string, usable_words)
-
-        send_words(usable_words)
+        buffered_probs = torch.cat(clipped, dim=0)
+        _temp_decode(decoder, buffered_probs)
 
 
 class PPBeamScorer:
@@ -317,18 +326,18 @@ if __name__ == '__main__':
     cap_step = Value('i', 0)
 
     p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q, cap_step))
-    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q, cap_step))
-    p_model = Process(target=language_model, args=(model, decoder, lm_q,))
+    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q, cap_step, decoder))
+    #p_model = Process(target=language_model, args=(model, decoder, lm_q,))
 
     try:
         p_capture.start()
         p_transcribe.start()
-        p_model.start()
+        #p_model.start()
 
         p_capture.join()
         p_transcribe.join()
-        p_model.join()
+        #p_model.join()
     except KeyboardInterrupt:
         p_capture.terminate()
         p_transcribe.terminate()
-        p_model.terminate()
+        #p_model.terminate()
