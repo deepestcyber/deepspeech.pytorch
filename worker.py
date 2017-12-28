@@ -42,9 +42,18 @@ def print_raw_greedy(probs):
 
 
 def send_words(words):
-    import json
-    to_send = json.dumps(words)
+    #import json
+    #to_send = json.dumps(words)
+    to_send = words
     print("WOULD SEND", to_send)
+    import socket
+
+    UDP_IP = "127.0.0.1"
+    UDP_PORT = 1800
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for w in words:
+        sock.sendto(w, (UDP_IP, UDP_PORT))
 
 
 def _zero_backward_state(h):
