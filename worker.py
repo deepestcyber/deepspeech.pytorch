@@ -41,6 +41,12 @@ def print_raw_greedy(probs):
     print([str(decoder.int_to_char[int(foo[:, i][0])]) for i in range(foo.size(-1))])
 
 
+def send_words(words):
+    import json
+    to_send = json.dumps(words)
+    print("WOULD SEND", to_send)
+
+
 def _zero_backward_state(h):
     for h_layer in h:
         h_layer.data[1].zero_()
@@ -50,11 +56,16 @@ def _repackage_hidden(h):
     return [Variable(h_layer.data) for h_layer in h]
 
 
-def transcribe(model, do_zero_backward_state, q, lm_q):
+def transcribe(model, do_zero_backward_state, q, lm_q, cap_step):
     hidden = None
 
     while True:
         step, spect = q.get()
+
+        print("cap_step:", cap_step.value, "model step", step)
+
+        if cap_step.value - step >= 1:
+            continue
 
         tick = time.time()
 
@@ -86,7 +97,7 @@ def transcribe(model, do_zero_backward_state, q, lm_q):
 
 def language_model(model, decoder, q):
     accoustic_data = []
-    a_data_fac = 2
+    a_data_fac = 1
 
     while True:
         (step, out) = q.get()
@@ -104,7 +115,7 @@ def language_model(model, decoder, q):
         buffered_probs = torch.cat(accoustic_data, dim=0)
 
         if isinstance(decoder, GreedyDecoderMaxOffset):
-            decoded_output, offsets, cprobs = decoder.decode(buffered_probs, k=2)
+            decoded_output, offsets, cprobs = decoder.decode(buffered_probs, k=1)
 
             print_raw_greedy(buffered_probs)
 
@@ -119,8 +130,12 @@ def language_model(model, decoder, q):
 
             final_string = decoded_output[0][0]
 
-        print(filter_usable_words(final_string))
+        #usable_words = filter_usable_words(final_string)
+        usable_words = final_string.split(" ")
+        usable_words = [n.strip() for n in usable_words if len(n)]
+        print(final_string, usable_words)
 
+        send_words(usable_words)
 
 
 class PPBeamScorer:
@@ -217,18 +232,9 @@ class PPBeamScorer:
         return results[0], None
 
 
-        results = [result[0][1] for result in beam_search_results]
-
-        with open('foo.pk', 'wb') as f:
-            import pickle
-            pickle.dump(beam_search_results, f)
-
-        return results, None # no offsets
-
-
 if __name__ == '__main__':
     import argparse
-    from multiprocessing import Queue, Process
+    from multiprocessing import Queue, Value, Process
 
     import capture
 
@@ -299,9 +305,10 @@ if __name__ == '__main__':
 
     q = Queue()
     lm_q = Queue()
+    cap_step = Value('i', 0)
 
-    p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q,))
-    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q,))
+    p_capture = Process(target=capture.capture, args=(audio_conf, args.use_file, q, cap_step))
+    p_transcribe = Process(target=transcribe, args=(model, args.zero_backward_state, q, lm_q, cap_step))
     p_model = Process(target=language_model, args=(model, decoder, lm_q,))
 
     try:

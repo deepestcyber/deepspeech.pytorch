@@ -10,7 +10,7 @@ def infinite_loop():
         yield (0,0)
 
 
-def capture(audio_conf, use_file, queue, do_pdb=False):
+def capture(audio_conf, use_file, queue, cap_step, do_pdb=False):
     sample_rate = audio_conf['sample_rate']
     window_stride = audio_conf['window_stride']
     window_size = audio_conf['window_size']
@@ -119,6 +119,7 @@ def capture(audio_conf, use_file, queue, do_pdb=False):
 
         print("queueing step", step, "- size k", k, "- size n", n)
         queue.put((step, spect))
+        cap_step.value = step
 
         step += 1
         img_i = 0
