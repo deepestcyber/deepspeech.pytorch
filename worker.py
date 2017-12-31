@@ -79,6 +79,8 @@ def transcribe(
         print("cap_step:", cap_step.value, "model step", step)
 
         if cap_step.value - step >= 1:
+            # reset state once we break the chain
+            hidden = None
             continue
 
         tick = time.time()
