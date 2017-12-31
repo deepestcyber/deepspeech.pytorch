@@ -35,10 +35,10 @@ def pp_joint(out, p):
     return "\n".join([o1, o2])
 
 
-def print_raw_greedy(probs):
+def print_raw_greedy(step, probs):
     # expects probs to be in BxTxU
     foo = probs.transpose(0, 1).max(dim=-1)[-1]
-    print([str(decoder.int_to_char[int(foo[:, i][0])]) for i in range(foo.size(-1))])
+    print("step({})".format(step), [str(decoder.int_to_char[int(foo[:, i][0])]) for i in range(foo.size(-1))])
 
 
 def send_words(vmse_host, vmse_port, words):
@@ -103,33 +103,33 @@ def transcribe(
         print('od', out.data.shape)
 
         #lm_q.put((step, out)) # XXX
-        _temp_decode(decoder, out.data, vmse_host, vmse_port)
+        _temp_decode(step, decoder, out.data, vmse_host, vmse_port)
 
         tock = time.time()
-        print("model time:", tock - tick)
+        print(step, "model time:", tock - tick)
 
 
-def _temp_decode(decoder, probs, vmse_host, vmse_port):
+def _temp_decode(step, decoder, probs, vmse_host, vmse_port):
     if isinstance(decoder, GreedyDecoderMaxOffset):
         decoded_output, offsets, cprobs = decoder.decode(probs, k=1)
 
-        print_raw_greedy(probs)
+        print_raw_greedy(step, probs)
 
         for i in range(len(decoded_output)):
             pp = pp_joint(decoded_output[i], cprobs[i])
-            print(pp)
+            print("step({})".format(step), pp)
 
         final_string = decoded_output[0][0][0]
     else:
         decoded_output, offsets = decoder.decode(probs)
-        print(decoded_output)
+        print(step, decoded_output)
 
         final_string = decoded_output[0][0]
 
     #usable_words = filter_usable_words(final_string)
     usable_words = final_string.split(" ")
     usable_words = [n.strip() for n in usable_words if len(n)]
-    print(final_string, usable_words)
+    print("step({})".format(step), final_string, usable_words)
 
     send_words(vmse_host, vmse_port, usable_words)
 
